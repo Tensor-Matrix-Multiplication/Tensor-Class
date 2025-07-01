@@ -1,2 +1,2 @@
 # Tensor-Class
-common tensor class for implementation of tensor rank reduction
+Repository for the common tensor class for the implementation of tensor rank reduction
