@@ -25,6 +25,8 @@ class Tensor:
             
         else: return [self.generate_tensor(shape[1:], level + 1)for s in range(shape[0])]
 
+        ##SAVING TENSOR TO CSV
+
 #TENSOR DISPLAY
 
     def __str__(self):
