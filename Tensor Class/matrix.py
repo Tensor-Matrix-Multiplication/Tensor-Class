@@ -2,6 +2,7 @@ import collections.abc
 import operator
 import json
 import numpy as np
+import os
 
 class Tensor:
     def __init__(self, data):
@@ -9,7 +10,6 @@ class Tensor:
         self._shape = self._data.shape
         self._rank = self._data.ndim
 
-        
     @property
     def shape(self):
         """Returns the shape of the tensor"""
@@ -121,12 +121,17 @@ class Tensor:
     def save(self, filepath):
         """
         Saves the tensor's data to a file using NumPy's .npy format.
-        This format is efficient and preserves data types and shapes.
         """
         try:
             # Add .npy extension if not present for clarity
             if not filepath.endswith('.npy'):
                 filepath += '.npy'
+
+            directory = os.path.dirname(filepath)
+            # Create the directory if it doesn't exist
+            if directory: # Ensure directory is not an empty string
+                os.makedirs(directory, exist_ok=True)
+
             np.save(filepath, self._data)
             print(f"Tensor successfully saved to {filepath}")
         except Exception as e: 
@@ -151,12 +156,9 @@ class Tensor:
             print(f"Error loading tensor from {filepath}: {e}")
             return None
 
-    
-
-
 if __name__ == "__main__":
     # Define a constant for the file path prefix
-    FILE_START = "file/"
+    FILE_START = "public/"
 
     # Scalars
     t_scalar = Tensor(42)
@@ -218,14 +220,16 @@ if __name__ == "__main__":
     file_path_npy = FILE_START+"my_tensor_numpy.npy"
     t_mat1.save(file_path_npy)
 
+    file_path_kp_vec1 = FILE_START+"kp_vec1_numpy.npy"
+    kp_vec1.save(file_path_kp_vec1)
+    loaded_kp_vec1 = Tensor.load(file_path_kp_vec1)
+    loaded_kp_vec1.display()
+
     loaded_tensor_npy = Tensor.load(file_path_npy)
     if loaded_tensor_npy:
         loaded_tensor_npy.display()
         print(f"Original tensor shape: {t_mat1.shape}, Loaded tensor shape: {loaded_tensor_npy.shape}")
         print(f"Original tensor data == Loaded tensor data: {np.array_equal(t_mat1._data, loaded_tensor_npy._data)}")
-
-    # Test loading a non-existent file
-    Tensor.load("non_existent_tensor_numpy.npy")
 
     # Test saving a rank-3 tensor
     t_rank3_1.save(FILE_START+"my_rank3_tensor_numpy.npy")
@@ -233,21 +237,5 @@ if __name__ == "__main__":
     if loaded_rank3_tensor:
         loaded_rank3_tensor.display()
 
-    print("\n--- Testing division by zero ---")
-    t_zero = Tensor([[1, 2], [0, 4]])
-    try:
-        Tensor([[10, 10], [10, 10]]) / t_zero
-    except ZeroDivisionError as e:
-        print(f"Caught expected error: {e}")
+    
 
-    try:
-        t_zero / 0
-    except ZeroDivisionError as e:
-        print(f"Caught expected error: {e}")
-
-    try:
-        5 / t_zero
-    except ZeroDivisionError as e:
-        print(f"Caught expected error: {e}")
-
-    print("Hello world 1")
