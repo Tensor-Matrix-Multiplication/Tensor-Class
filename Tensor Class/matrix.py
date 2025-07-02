@@ -249,3 +249,5 @@ if __name__ == "__main__":
         5 / t_zero
     except ZeroDivisionError as e:
         print(f"Caught expected error: {e}")
+
+    print("Hello world 1")
