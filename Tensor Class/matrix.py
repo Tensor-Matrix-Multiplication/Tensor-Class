@@ -3,6 +3,8 @@ import operator
 import json
 import numpy as np
 import os
+from pysat.solvers import Glucose3  # We'll use the Glucose3 solver
+from pysat.formula import CNF
 
 class Tensor:
     def __init__(self, data):
@@ -30,9 +32,9 @@ class Tensor:
 
     def __add__(self, other):
         if isinstance(other, Tensor):
-            return Tensor(self._data+other._data)
+            return Tensor((self._data+other._data)%2)
         elif isinstance(other, (int, float)):
-            return Tensor(self._data + other)
+            return Tensor((self._data + other)%2)
         else:
             return NotImplemented
     
@@ -155,87 +157,161 @@ class Tensor:
         except Exception as e: # Catch broader exceptions for loading
             print(f"Error loading tensor from {filepath}: {e}")
             return None
+    
+    def reshape(self, *new_shape):
+        """
+        Reshapes the tensor to the given new_shape.
+        The total number of elements must remain the same.
+        Returns a new Tensor instance with the reshaped data.
+        """
+        try:
+            reshaped_data = self._data.reshape(new_shape)
+            return Tensor(reshaped_data)
+        except ValueError as e:
+            raise ValueError(f"Cannot reshape tensor with current shape {self.shape} to {new_shape}: {e}")
+        
+    def reshape_inplace(self, *new_shape):
+        """
+        Reshapes the tensor to the given new_shape IN-PLACE.
+        The total number of elements must remain the same.
+        Updates the tensor's shape and rank properties.
+        """
+        try:
+            self._data = self._data.reshape(new_shape)
+            self._shape = self._data.shape
+            self._rank = self._data.ndim
+        except ValueError as e:
+            raise ValueError(f"Cannot reshape tensor with current shape {self.shape} to {new_shape}: {e}")
+
+
 
 if __name__ == "__main__":
     # Define a constant for the file path prefix
     FILE_START = "public/"
+    
+    # --- Step 1: Create Encoded Basis Tensors ---
+    def create_encoded_basis(index, shape):
+        """Creates a vector of length 7, reshapes it, and returns it as a Tensor."""
+        vec = np.zeros(4, dtype=int)
+        vec[index] = 1
+        return Tensor(vec.reshape(shape))
 
-    # Scalars
-    t_scalar = Tensor(42)
-    t_scalar.display()
-    print(f"Type of internal data: {type(t_scalar._data)}")
-    print(f"Scalar + 10: {(t_scalar + 10)._data}")
-    print(f"10 - Scalar: {(10 - t_scalar)._data}\n")
+    # Reshape basis vectors to create the desired (c, a, b) axis order in the final tensor.
+    a = [create_encoded_basis(i, (1, 4, 1)) for i in range(4)]
+    b = [create_encoded_basis(i, (1, 1, 4)) for i in range(4)]
+    c = [create_encoded_basis(i, (4, 1, 1)) for i in range(4)]
+    
+    def to_idx(r, c):
+        return (r - 1) * 2 + (c - 1)
 
-    # Vectors
-    t_vec1 = Tensor([1, 2, 3])
-    t_vec2 = Tensor([4, 5, 6])
-    t_vec1.display()
-    print(f"Vector + Vector:\n{(t_vec1 + t_vec2)._data}")
-    print(f"Vector - Vector:\n{(t_vec1 - t_vec2)._data}")
-    print(f"Vector * 2:\n{(t_vec1 * 2)._data}\n")
+    print("--- Verification of a 7-Multiplication Scheme (Encoded Vector Method) ---")
+    print("This script uses Z_2 arithmetic (modulo 2) as required by the scheme.\n")
 
-    # Matrices
-    t_mat1 = Tensor([[1, 2], [3, 4]])
-    t_mat2 = Tensor([[5, 6], [7, 8]])
-    t_mat1.display()
-    t_mat2.display()
-    print(f"Matrix + Matrix:\n{(t_mat1 + t_mat2)._data}")
-    print(f"Matrix - Matrix:\n{(t_mat1 - t_mat2)._data}")
-    print(f"Matrix / 2:\n{(t_mat1 / 2)._data}\n")
+    # --- Step 2: Construct each of the 7 summands (M_l) ---
+    # The product order is C.kron(A).kron(B) to get the desired (c,a,b) axes
+    
+    # M1 = (
+    # c[to_idx(1,1)] + c[to_idx(1,2)] + c[to_idx(2,1)] + c[to_idx(2,2)]
+    # ).kronecker_product(
+    #     a[to_idx(1,2)] + a[to_idx(2,1)] + a[to_idx(2,2)]
+    # ).kronecker_product(
+    #     b[to_idx(1,1)] + b[to_idx(1,2)] + b[to_idx(2,1)] + b[to_idx(2,2)]
+    # )
 
-    # Rank-3 Tensors
-    t_rank3_1 = Tensor([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])
-    t_rank3_2 = Tensor([[[9, 10], [11, 12]], [[13, 14], [15, 16]]])
-    t_rank3_1.display()
-    print(f"Rank-3 + Rank-3:\n{(t_rank3_1 + t_rank3_2)._data}\n")
-    print(f"Scalar + Rank-3:\n{(10 + t_rank3_1)._data}\n")
-    print(f"Rank-3 * 0.5:\n{(t_rank3_1 * 0.5)._data}\n")
+    # M2 = (
+    #     c[to_idx(1,2)]
+    # ).kronecker_product(
+    #     a[to_idx(1,1)]
+    # ).kronecker_product(
+    #     b[to_idx(1,2)] + b[to_idx(2,1)] + b[to_idx(2,2)]
+    # )
 
+    # M3 = (
+    #     c[to_idx(1,1)] + c[to_idx(1,2)] + c[to_idx(2,1)] + c[to_idx(2,2)]
+    # ).kronecker_product(
+    #     a[to_idx(1,2)] + a[to_idx(2,1)]
+    # ).kronecker_product(
+    #     b[to_idx(1,1)] + b[to_idx(2,1)] + b[to_idx(2,2)]
+    # )
 
-    print("\n--- Testing Kronecker Product (Generalized) ---")
+    # M4 = (
+    #     c[to_idx(1,1)] + c[to_idx(1,2)] + c[to_idx(2,1)] + c[to_idx(2,2)]
+    # ).kronecker_product(
+    #     a[to_idx(2,2)]
+    # ).kronecker_product(
+    #     b[to_idx(1,1)] + b[to_idx(1,2)] + b[to_idx(2,1)] + b[to_idx(2,2)]
+    # )
 
-    # Kronecker product of 2D matrices
-    kp_m1 = Tensor([[1, 2], [3, 4]])
-    kp_m2 = Tensor([[5, 6], [7, 8]])
-    kp_result_matrix = kp_m1.kronecker_product(kp_m2)
-    print(f"Kronecker Product (Matrix x Matrix):\n{kp_result_matrix._data}")
-    print(f"Shape: {kp_result_matrix.shape}, Rank: {kp_result_matrix.rank}\n")
+    # M5 = (
+    #     c[to_idx(1,1)] + c[to_idx(1,2)] + c[to_idx(2,1)] + c[to_idx(2,2)]
+    # ).kronecker_product(
+    #     a[to_idx(1,2)] + a[to_idx(2,1)]
+    # ).kronecker_product(
+    #     b[to_idx(1,1)] + b[to_idx(1,2)] + b[to_idx(2,1)] + b[to_idx(2,2)]
+    # )
 
-    # Kronecker product with a vector (1D)
-    kp_vec1 = Tensor([1, 2, 3])
-    kp_vec2 = Tensor([10, 100])
-    kp_result_vec = kp_vec1.kronecker_product(kp_vec2)
-    print(f"Kronecker Product (Vector x Vector):\n{kp_result_vec._data}")
-    print(f"Shape: {kp_result_vec.shape}, Rank: {kp_result_vec.rank}\n")
+    # M6 = (
+    #     c[to_idx(1,2)]
+    # ).kronecker_product(
+    #     a[to_idx(1,1)]
+    # ).kronecker_product(
+    #     b[to_idx(1,2)] + b[to_idx(2,1)] + b[to_idx(2,2)]
+    # )
 
-    # Kronecker product of 3D tensors
-    kp_3d_1 = Tensor([[[1, 0], [0, 1]]]) # Shape (1,2,2)
-    kp_3d_2 = Tensor([[[5, 6], [7, 8]], [[9, 10], [11, 12]]]) # Shape (2,2,2)
-    kp_result_3d = kp_3d_1.kronecker_product(kp_3d_2)
-    print(f"Kronecker Product (3D x 3D):\n{kp_result_3d._data}")
-    print(f"Shape: {kp_result_3d.shape}, Rank: {kp_result_3d.rank}\n")
+    # M7 = (
+    #     c[to_idx(1,1)] + c[to_idx(1,2)] + c[to_idx(2,1)] + c[to_idx(2,2)]
+    # ).kronecker_product(
+    #     a[to_idx(1,2)] + a[to_idx(2,1)]
+    # ).kronecker_product(
+    #     b[to_idx(1,1)] + b[to_idx(2,1)] + b[to_idx(2,2)]
+    # )
+    M1 = (c[to_idx(1,1)] + c[to_idx(1,2)] + c[to_idx(2,1)] + c[to_idx(2,2)]).kronecker_product(
+            a[to_idx(1,1)] + a[to_idx(2,2)]
+        ).kronecker_product(
+            b[to_idx(1,1)] + b[to_idx(2,2)]
+        )
 
-    print("\n--- Testing save and load methods (NumPy .npy format) ---")
-    file_path_npy = FILE_START+"my_tensor_numpy.npy"
-    t_mat1.save(file_path_npy)
+    M2 = (c[to_idx(2,1)] + c[to_idx(2,2)]).kronecker_product(
+            a[to_idx(2,1)] + a[to_idx(2,2)]
+        ).kronecker_product(
+            b[to_idx(1,1)]
+        )
 
-    file_path_kp_vec1 = FILE_START+"kp_vec1_numpy.npy"
-    kp_vec1.save(file_path_kp_vec1)
-    loaded_kp_vec1 = Tensor.load(file_path_kp_vec1)
-    loaded_kp_vec1.display()
+    M3 = (c[to_idx(1,2)] + c[to_idx(2,2)]).kronecker_product(
+            a[to_idx(1,1)]
+        ).kronecker_product(
+            b[to_idx(1,2)] - b[to_idx(2,2)]
+        )
 
-    loaded_tensor_npy = Tensor.load(file_path_npy)
-    if loaded_tensor_npy:
-        loaded_tensor_npy.display()
-        print(f"Original tensor shape: {t_mat1.shape}, Loaded tensor shape: {loaded_tensor_npy.shape}")
-        print(f"Original tensor data == Loaded tensor data: {np.array_equal(t_mat1._data, loaded_tensor_npy._data)}")
+    M4 = (c[to_idx(1,1)] + c[to_idx(2,1)]).kronecker_product(
+            a[to_idx(2,2)]
+        ).kronecker_product(
+            b[to_idx(2,1)] - b[to_idx(1,1)]
+        )
 
-    # Test saving a rank-3 tensor
-    t_rank3_1.save(FILE_START+"my_rank3_tensor_numpy.npy")
-    loaded_rank3_tensor = Tensor.load(FILE_START+"my_rank3_tensor_numpy.npy")
-    if loaded_rank3_tensor:
-        loaded_rank3_tensor.display()
+    M5 = (c[to_idx(1,1)] + c[to_idx(1,2)]).kronecker_product(
+            a[to_idx(1,1)] + a[to_idx(1,2)]
+        ).kronecker_product(
+            b[to_idx(2,2)]
+        )
+
+    M6 = (c[to_idx(2,2)]).kronecker_product(
+            a[to_idx(2,1)] - a[to_idx(1,1)]
+        ).kronecker_product(
+            b[to_idx(1,1)] + b[to_idx(1,2)]
+        )
+
+    M7 = (c[to_idx(1,1)]).kronecker_product(
+            a[to_idx(1,2)] - a[to_idx(2,2)]
+        ).kronecker_product(
+            b[to_idx(2,1)] + b[to_idx(2,2)]
+        )
+
 
     
 
+    # --- Step 3: Sum all 23 tensors ---
+    Result = M1 + M2 + M3 + M4 + M5 + M6 + M7 
+    
+    print("\n--- Final Resulting Tensor (Corrected) ---")
+    Result.display()
