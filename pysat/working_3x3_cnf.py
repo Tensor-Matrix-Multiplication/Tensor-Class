@@ -106,8 +106,8 @@ def decode_and_print_solution(model, var_manager, matrix_size, num_products):
 # --- Main Execution ---
 if __name__ == "__main__":
     # --- Parameters for the problem ---
-    MATRIX_SIZE = 3
-    NUM_PRODUCTS = 27
+    MATRIX_SIZE = 2
+    NUM_PRODUCTS = 7
     
     var_manager = VariableMapper()
     all_clauses = []
