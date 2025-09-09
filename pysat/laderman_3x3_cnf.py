@@ -2,6 +2,7 @@ import collections
 from pysat.solvers import Glucose3
 from itertools import product
 import re
+import time
 
 # --- Helper Functions (VariableMapper, convert_brent_equation_to_cnf) ---
 # These are correct and remain unchanged from your original code.
@@ -218,6 +219,8 @@ def decode_and_print_solution(model, var_manager, matrix_size, num_products):
 
 # --- Main Execution ---
 if __name__ == "__main__":
+    start_time = time.time()
+
     MATRIX_SIZE = 3
     NUM_PRODUCTS = 23
     
@@ -262,3 +265,8 @@ if __name__ == "__main__":
             decode_and_print_solution(model, var_manager, MATRIX_SIZE, NUM_PRODUCTS)
         else:
             print("\n❌ No solution found. The model is UNSAT, which indicates an issue in the problem encoding or the provided equations.")
+
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    
+    print(f"Elapsed Time: {elapsed_time} seconds")
